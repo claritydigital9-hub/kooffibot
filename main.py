@@ -1,10 +1,10 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json, requests, os
+from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from google import genai
 from google.genai import types
 
-# 1. PARAMÈTRES OFFICIELS AVEC JETON PERMANENT SYSTEM USER
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID', '1244852872055806')
 ACCESS_TOKEN = os.environ.get('ACCESS_TOKEN', 'EAAWhxl1ur38BSzCOugMGBybAW0rA7JarcTONY6kPB1GqOu3fnSsfoyqparDXutHbgBfZCoWqSKxZCYp7rI0OdUV7T6ldFrdif69rb2ptJzZCZAbBibzafJ8s0zLBpBM0peRWtmZBa1ruJpR7X1b8Qeke0TF2mkmrnp2XO0WiHVbHO1Vs917WyKLNn7dAELVaUNgZDZD')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA')
@@ -14,11 +14,21 @@ client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 memoires_clients = {}
 
 class MetaWebhookHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+
     def do_GET(self):
-        from urllib.parse import urlparse, parse_qs
         query = parse_qs(urlparse(self.path).query)
-        if query.get('hub.mode', [''])[0] == 'subscribe' and query.get('hub.verify_token', [''])[0] == VERIFY_TOKEN:
-            body = query.get('hub.challenge', [''])[0].encode('utf-8')
+        mode = query.get('hub.mode', [''])[0]
+        token = query.get('hub.verify_token', [''])[0]
+        challenge = query.get('hub.challenge', [''])[0]
+        
+        # 1. Verification Meta Webhook
+        if mode == 'subscribe' and token == VERIFY_TOKEN:
+            body = challenge.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.send_header('Content-Length', str(len(body)))
@@ -27,12 +37,19 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             print(">>> Webhook Meta vérifié avec succès !")
         else:
-            self.send_response(403)
+            # 2. Ping de sante Render ou visite web
+            body = b"SERVEUR KOFFI ACTIF SUR RENDER 24/7"
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Connection', 'close')
             self.end_headers()
+            self.wfile.write(body)
 
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
+        
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Connection', 'close')
