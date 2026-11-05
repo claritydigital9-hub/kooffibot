@@ -1,5 +1,5 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import json, requests, os
+import json, requests, os, sys
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from google import genai
@@ -26,7 +26,6 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
         token = query.get('hub.verify_token', [''])[0]
         challenge = query.get('hub.challenge', [''])[0]
         
-        # 1. Verification Meta Webhook
         if mode == 'subscribe' and token == VERIFY_TOKEN:
             body = challenge.encode('utf-8')
             self.send_response(200)
@@ -35,9 +34,8 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             self.end_headers()
             self.wfile.write(body)
-            print(">>> Webhook Meta vérifié avec succès !")
+            print(">>> Webhook Meta vérifié avec succès !", flush=True)
         else:
-            # 2. Ping de sante Render ou visite web
             body = b"SERVEUR KOFFI ACTIF SUR RENDER 24/7"
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
@@ -60,14 +58,21 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
             data = json.loads(post_data.decode('utf-8'))
             entry = data.get('entry', [{}])[0]
             changes = entry.get('changes', [{}])[0]
-            messages = changes.get('value', {}).get('messages', [])
-            if not messages: return
+            value = changes.get('value', {})
+            messages = value.get('messages', [])
             
-            from_phone = messages[0].get('from', '')
-            text_body = messages[0].get('text', {}).get('body', '')
-            if not text_body: return
+            if not messages:
+                return
+                
+            msg = messages[0]
+            from_phone = msg.get('from', '')
+            text_body = msg.get('text', {}).get('body', '')
             
-            print(f"\n[!] Message client ({from_phone}) : {text_body}")
+            if not text_body:
+                return
+                
+            print(f"\n[!] Message reçu ({from_phone}) : {text_body}", flush=True)
+            
             if from_phone not in memoires_clients:
                 memoires_clients[from_phone] = []
             memoires_clients[from_phone].append(f"Client: {text_body}")
@@ -92,17 +97,18 @@ RÈGLES :
             )
             reponse = gemini_resp.text
             memoires_clients[from_phone].append(f"Koffi: {reponse}")
-            print(f"[!] Koffi répond : {reponse}")
+            print(f"[!] Koffi répond : {reponse}", flush=True)
             
             url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
             headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
             payload = {"messaging_product": "whatsapp", "to": from_phone, "type": "text", "text": {"body": reponse}}
             r = requests.post(url, headers=headers, json=payload, timeout=10)
-            print(f"Statut envoi Meta : {r.status_code}")
+            print(f"Statut envoi Meta : {r.status_code} - {r.text}", flush=True)
+            
         except Exception as e:
-            print(f"Erreur : {e}")
+            print(f"Erreur d'exécution : {e}", flush=True)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f"SERVEUR KOFFI EN LIGNE SUR LE PORT {port}")
+    print(f"SERVEUR KOFFI EN LIGNE SUR LE PORT {port}", flush=True)
     HTTPServer(('0.0.0.0', port), MetaWebhookHandler).serve_forever()
