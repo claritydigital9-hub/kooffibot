@@ -15,7 +15,7 @@ memoires_clients = {}
 
 def generer_reponse_koffi(historique, prompt):
     # Double sécurité : tente le modèle rapide, bascule sur le modèle standard si saturation
-    modeles = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-lite-latest']
+    modeles = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest']
     for m in modeles:
         try:
             resp = client_gemini.models.generate_content(
