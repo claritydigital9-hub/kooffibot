@@ -1,5 +1,5 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import json, requests, os, sys
+import json, requests, os
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from google import genai
@@ -12,9 +12,10 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', 'mon_token_secret_koffi')
 
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 memoires_clients = {}
+messages_traites = set()
 
 def generer_reponse_koffi(historique, prompt):
-    # Double sécurité : tente le modèle rapide, bascule sur le modèle standard si saturation
+    # Appel direct sur les modèles officiels recommandés par Google
     modeles = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-lite-latest']
     for m in modeles:
         try:
@@ -26,8 +27,8 @@ def generer_reponse_koffi(historique, prompt):
             if resp.text:
                 return resp.text
         except Exception as e:
-            print(f"Modèle {m} indisponible ({e}), bascule...", flush=True)
-    return "Bonjour ! Nous avons bien reçu votre demande et nous vous confirmons votre réservation d'ici quelques instants. À très vite chez Le Braisé Lounge !"
+            print(f"Modèle {m} indisponible, bascule...", flush=True)
+    return "Bonjour ! Je suis Koffi de Le Braisé Lounge. Bien reçu, comment puis-je vous aider ?"
 
 class MetaWebhookHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
@@ -81,6 +82,18 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
                 return
                 
             msg = messages[0]
+            msg_id = msg.get('id', '')
+            
+            # FILTRE ANTI-DOUBLON STRICT
+            if msg_id and msg_id in messages_traites:
+                print(f"[!] Message déjà traité ({msg_id}), ignoré.", flush=True)
+                return
+            if msg_id:
+                messages_traites.add(msg_id)
+                # Garde les 500 derniers identifiants en mémoire
+                if len(messages_traites) > 500:
+                    messages_traites.pop()
+                
             from_phone = msg.get('from', '')
             text_body = msg.get('text', {}).get('body', '')
             
@@ -96,14 +109,16 @@ class MetaWebhookHandler(BaseHTTPRequestHandler):
             h = datetime.now().hour
             salutation = "Bonjour" if 5 <= h < 17 else "Bonsoir"
             
-            prompt = f"""Tu es Koffi, le maître d'hôtel de "Le Braisé Lounge" à Lomé (Adidogomé).
-Il est actuellement {h}h à Lomé : dis strictement "{salutation}" en saluant.
-RÈGLES :
-- Sois poli, concis, direct et professionnel.
-- Carte : Poulet braisé (7.000 F / 4.000 F demi), Poissons braisés frais (5.000 à 10.000 F), Garba au thon (1.500 à 3.000 F), Brochettes (3.000 F).
-- Réservation : Il te faut obligatoirement (1) Le nom, (2) L'heure, (3) Le nombre de personnes.
-- Si le client a déjà donné une info dans l'historique ci-dessous, NE LA REDEMANDE PAS ! Demande uniquement ce qui manque.
-- Dès que tu as les 3 infos, confirme immédiatement la table."""
+            prompt = f"""Tu es Koffi, le maître d'hôtel chaleureux, poli et direct du restaurant "Le Braisé Lounge & Saveurs d'Ivoire" à Lomé (Adidogomé).
+Il est actuellement {h}h à Lomé : dis "{salutation}" uniquement si c'est le début de la conversation.
+
+RÈGLES DE CONVERSATION NATURELLE :
+1. Tu t'appelles KOFFI. Si le client te demande ton prénom, ton nom ou qui tu es, dis simplement que tu es Koffi, son maître d'hôtel.
+2. Si une réservation est DÉJÀ confirmée dans l'historique et que le client pose une autre question (ex : demande ton nom, demande des conseils, ou dit merci) : RÉPONDS DIRECTEMENT À SA QUESTION sans répéter bêtement la confirmation de réservation !
+3. Reste concis, poli et réactif. Va droit au but comme un vrai serveur togolais attentif.
+4. Carte : Poulet braisé (7.000 F entier / 4.000 F demi), Poissons braisés frais (5.000 à 10.000 F selon taille), Garba au thon (1.500 à 3.000 F), Brochettes (3.000 F).
+5. Localisation : Lomé, Adidogomé non loin du boulevard principal.
+6. Réservation : Dès que tu as le nom, l'heure et le nombre de personnes, confirme la table une seule fois clairement."""
 
             historique_texte = "\n".join(memoires_clients[from_phone])
             reponse = generer_reponse_koffi(historique_texte, prompt)
@@ -115,7 +130,7 @@ RÈGLES :
             headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
             payload = {"messaging_product": "whatsapp", "to": from_phone, "type": "text", "text": {"body": reponse}}
             r = requests.post(url, headers=headers, json=payload, timeout=10)
-            print(f"Statut envoi Meta : {r.status_code} - {r.text}", flush=True)
+            print(f"Statut envoi Meta : {r.status_code}", flush=True)
             
         except Exception as e:
             print(f"Erreur d'exécution : {e}", flush=True)
