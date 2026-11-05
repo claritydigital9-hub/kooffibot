@@ -13,6 +13,22 @@ VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', 'mon_token_secret_koffi')
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 memoires_clients = {}
 
+def generer_reponse_koffi(historique, prompt):
+    # Double sécurité : tente le modèle rapide, bascule sur le modèle standard si saturation
+    modeles = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-lite-latest']
+    for m in modeles:
+        try:
+            resp = client_gemini.models.generate_content(
+                model=m,
+                contents=historique,
+                config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
+            )
+            if resp.text:
+                return resp.text
+        except Exception as e:
+            print(f"Modèle {m} indisponible ({e}), bascule...", flush=True)
+    return "Bonjour ! Nous avons bien reçu votre demande et nous vous confirmons votre réservation d'ici quelques instants. À très vite chez Le Braisé Lounge !"
+
 class MetaWebhookHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(200)
@@ -90,12 +106,8 @@ RÈGLES :
 - Dès que tu as les 3 infos, confirme immédiatement la table."""
 
             historique_texte = "\n".join(memoires_clients[from_phone])
-            gemini_resp = client_gemini.models.generate_content(
-                model='gemini-flash-lite-latest',
-                contents=historique_texte,
-                config=types.GenerateContentConfig(system_instruction=prompt, temperature=0.3)
-            )
-            reponse = gemini_resp.text
+            reponse = generer_reponse_koffi(historique_texte, prompt)
+            
             memoires_clients[from_phone].append(f"Koffi: {reponse}")
             print(f"[!] Koffi répond : {reponse}", flush=True)
             
