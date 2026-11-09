@@ -12,10 +12,10 @@ PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1244852872055806")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "mon_token_secret_koffi")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA")
 
-# NUMÉRO DU CHEF / GÉRANT QUI REÇOIT LES ALERTES PAR WHATSAPP
+# Numéro WhatsApp du Chef qui reçoit les alertes
 NUMERO_CHEF = os.environ.get("NUMERO_CHEF", "22897633742")
 
-# URL OFFICIELLE DE TON AFFICHE MENU SUR TON GITHUB PUBLIC
+# URL de ton affiche menu officielle sur ton GitHub public
 MENU_IMAGE_URL = os.environ.get(
     "MENU_IMAGE_URL", 
     "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/Code_Generated_Image.png"
@@ -26,7 +26,7 @@ messages_traites = set()
 FICHIER_MEMOIRE = "memoires_clients.json"
 FICHIER_RESERVATIONS = "reservations.json"
 
-# 2. PERSISTANCE DE LA MÉMOIRE (ZÉRO PERTE SUR DISQUE)
+# 2. PERSISTANCE SUR DISQUE
 def charger_memoires():
     if os.path.exists(FICHIER_MEMOIRE):
         try:
@@ -57,7 +57,7 @@ def enregistrer_reservation_fichier(details):
 
 memoires_clients = charger_memoires()
 
-# 3. ENVOIS VIA WHATSAPP GRAPH API
+# 3. ENVOIS VIA META GRAPH API
 def envoyer_message_texte(to_phone, texte):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
@@ -69,9 +69,9 @@ def envoyer_message_texte(to_phone, texte):
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
-        print(f"[✓] Message envoyé vers {to_phone} : {r.status_code}")
+        print(f"[✓] Envoi texte vers {to_phone} : Code {r.status_code}")
     except Exception as e:
-        print(f"[!] Erreur texte : {e}")
+        print(f"[!] Erreur envoi texte : {e}")
 
 def envoyer_photo_menu(to_phone):
     url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
@@ -87,9 +87,9 @@ def envoyer_photo_menu(to_phone):
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
-        print(f"[✓] Photo menu envoyée vers {to_phone} : {r.status_code}")
+        print(f"[✓] Photo menu envoyée vers {to_phone} : Code {r.status_code}")
     except Exception as e:
-        print(f"[!] Erreur photo : {e}")
+        print(f"[!] Erreur envoi photo : {e}")
 
 def notifier_chef(nom, heure, couverts, plats, tel_client):
     texte_alerte = (
@@ -102,7 +102,7 @@ def notifier_chef(nom, heure, couverts, plats, tel_client):
         f"📞 *WhatsApp Client :* +{tel_client}\n"
         f"📅 *Date :* {datetime.now().strftime('%d/%m/%Y à %H:%M')}\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"Table enregistrée automatiquement par Koffi."
+        f"Table réservée automatiquement par Koffi."
     )
     print(f"\n[!] ALERTE CHEF ENVOYÉE AU {NUMERO_CHEF} pour {nom}")
     envoyer_message_texte(NUMERO_CHEF, texte_alerte)
@@ -116,25 +116,32 @@ def notifier_chef(nom, heure, couverts, plats, tel_client):
         "date": datetime.now().isoformat()
     })
 
-# 4. CERVEAU DE KOFFI
+# 4. CERVEAU DE KOFFI AVEC GESTION NATURELLE DU DIALOGUE
 def generer_reponse_koffi(from_phone, text_client):
-    texte_lower = text_client.lower()
-    if "bonsoir" in texte_lower:
-        salutation = "Bonsoir"
-    elif "bonjour" in texte_lower:
-        salutation = "Bonjour"
-    else:
-        h = datetime.now().hour
-        salutation = "Bonjour" if 5 <= h < 14 else "Bonsoir"
+    # Vérifier si Koffi a déjà parlé dans l'échange
+    deja_salue = False
+    historique_existant = memoires_clients.get(from_phone, [])
+    for msg in historique_existant:
+        if msg.startswith("Koffi:"):
+            deja_salue = True
+            break
 
-    prompt_systeme = f"""Tu es Koffi, le maître d'hôtel chaleureux, poli et très professionnel du restaurant "Le Braisé Lounge & Saveurs d'Ivoire" à Adidogomé (Lomé, Togo).
-Ton but est de converser naturellement comme un être humain sur WhatsApp.
+    h = datetime.now().hour
+    salutation_moment = "Bonjour" if 5 <= h < 14 else "Bonsoir"
+
+    consigne_salutation = (
+        "⚠️ CONVERSATION DÉJÀ EN COURS : Ne dis JAMAIS 'Bonjour' ni 'Bonsoir' ! Enchaîne directement avec enthousiasme (ex: 'Avec plaisir !', 'C'est bien noté !', 'Parfait !')."
+        if deja_salue else
+        f"C'est le tout premier message : Salue chaleureusement avec '{salutation_moment}' et souhaite la bienvenue."
+    )
+
+    prompt_systeme = f"""Tu es Koffi, le maître d'hôtel chaleureux, poli et dynamique du restaurant "Le Braisé Lounge & Saveurs d'Ivoire" à Adidogomé (Lomé, Togo).
+Ton but est de converser comme un vrai serveur togolais expérimenté sur WhatsApp.
 
 INFORMATIONS DU RESTAURANT :
 - Localisation : Lomé, quartier Adidogomé, non loin du grand carrefour / boulevard principal.
-- Lien Google Maps officiel : https://maps.google.com/?q=Le+Braise+Lounge+Adidogome+Lome
-- Téléphone direct / Infoline : +228 90 00 00 00
-- Présence en ligne : TikTok (@lebraiselounge) et Instagram !
+- Lien Google Maps : https://maps.google.com/?q=Le+Braise+Lounge+Adidogome+Lome
+- Téléphone direct : +228 90 00 00 00
 - Carte & Prix :
   * Poulet braisé entier : 7.000 F CFA | Demi-poulet : 4.000 F CFA
   * Poissons braisés frais (Carpe / Bar) : 5.000 F à 10.000 F CFA selon la taille
@@ -142,20 +149,19 @@ INFORMATIONS DU RESTAURANT :
   * Garba au thon rouge : 1.500 F à 3.000 F CFA
   * Accompagnements : Alloco (1.000 F), Frites, Attiéké
 
-RÈGLES D'OR DE CONVERSATION :
-1. MÉMOIRE DU CLIENT : Retiens toujours son nom (ex: "chef Lefa") et utilise-le avec respect.
-2. ENVOI DE CARTE / PHOTO : Si le client demande la carte ou le menu en photo, confirme-lui avec enthousiasme que tu lui envoies la carte tout de suite.
-   ⚠️ INTERDICTION STRICTE : N'écris JAMAIS dans ton texte de descriptions d'actions comme "(Photo de la carte...)" ou "[Photo envoyée]".
-3. PRÉSENTATION DES PLATS : Quand le client demande ce qu'il y a à manger, cite toujours les plats accompagnés de leurs prix en F CFA avec gourmandise.
-4. VALIDATION STRICTE DE LA RÉSERVATION :
+RÈGLES D'OR DE DIALOGUE HUMAIN :
+1. {consigne_salutation}
+2. NE PAS RÉPÉTER LE NOM : N'utilise pas le nom du client dans chaque phrase. Utilise-le avec parcimonie et naturel.
+3. ENVOI DE CARTE / PHOTO : Si le client demande la carte en photo, confirme avec joie que tu lui envoies tout de suite. N'écris jamais "(Photo de la carte...)".
+4. PRÉSENTATION DES PLATS : Quand le client demande ce qu'il y a à manger, cite les spécialités avec leurs prix en F CFA en donnant envie.
+5. VALIDATION STRICTE DE RÉSERVATION :
    Dès que tu as le Nom, l'Heure et le Nombre de personnes :
    - Confirme chaleureusement la table.
-   - Si le client n'a pas encore choisi ses plats, propose-lui gentiment de commander à l'avance pour que la cuisine commence à griller avant son arrivée !
+   - Propose d'anticiper la cuisson d'un plat si ce n'est pas encore fait.
    - Ajoute STRICTEMENT à la fin de ta réponse cette balise invisible :
-   [RESERVATION_CONFIRMEE: Nom=... | Heure=... | Couverts=... | Plats=...]
-5. Salutation actuelle : Réponds avec "{salutation}" si tu dois saluer."""
+   [RESERVATION: Nom=... | Heure=... | Couverts=... | Plats=...]"""
 
-    historique = memoires_clients.get(from_phone, [])[-12:]
+    historique = historique_existant[-10:]
     dialogue_str = "\n".join(historique)
     
     contenu_final = f"""Historique de notre conversation :
@@ -182,11 +188,11 @@ Réponse de Koffi :"""
         except Exception:
             continue
 
-    if "maps" in texte_lower or "localisation" in texte_lower:
+    if "maps" in text_client.lower() or "localisation" in text_client.lower():
         return "Voici notre emplacement exact sur Google Maps à Adidogomé : https://maps.google.com/?q=Le+Braise+Lounge+Adidogome+Lome . Nous vous y attendons avec plaisir !"
-    return "C'est bien noté chef ! C'est parfaitement enregistré pour vous au Braisé Lounge. Que puis-je vous préparer d'autre ?"
+    return "C'est bien noté ! C'est parfaitement enregistré pour vous au Braisé Lounge. Que puis-je vous préparer d'autre ?"
 
-# 5. TRAITEMENT ASYNCHRONE DES MESSAGES ENTRANTS
+# 5. TRAITEMENT ASYNCHRONE DES MESSAGES
 def traiter_webhook_async(body_str):
     try:
         data = json.loads(body_str)
@@ -205,7 +211,7 @@ def traiter_webhook_async(body_str):
         if not text_client or not msg_id:
             return
 
-        # Protection anti-doublons
+        # Anti-doublons
         if msg_id in messages_traites:
             return
         messages_traites.add(msg_id)
@@ -222,31 +228,36 @@ def traiter_webhook_async(body_str):
         # A. Génération de la réponse
         reponse_brute = generer_reponse_koffi(from_phone, text_client)
 
-        # B. Alerte automatique du Chef si réservation validée
+        # B. Alerte automatique du Chef avec détection souple
         reponse_client = reponse_brute
-        match = re.search(r'\[RESERVATION_CONFIRMEE:\s*Nom=(.*?)\s*\|\s*Heure=(.*?)\s*\|\s*Couverts=(.*?)\s*\|\s*Plats=(.*?)\]', reponse_brute)
+        match = re.search(r'\[RESERVATION[^\]]*Nom\s*[:=]\s*([^\|\]]+)[^\]]*Heure\s*[:=]\s*([^\|\]]+)[^\]]*Couverts\s*[:=]\s*([^\|\]]+)(?:[^\]]*Plats\s*[:=]\s*([^\|\]]+))?[^\]]*\]', reponse_brute, re.IGNORECASE)
+        
         if match:
             nom_c = match.group(1).strip()
             heure_c = match.group(2).strip()
             couverts_c = match.group(3).strip()
-            plats_c = match.group(4).strip()
+            plats_c = match.group(4).strip() if match.group(4) else "Non spécifiés"
             
-            reponse_client = re.sub(r'\[RESERVATION_CONFIRMEE:.*?\]', '', reponse_brute).strip()
+            reponse_client = re.sub(r'\[RESERVATION.*?\]', '', reponse_brute, flags=re.IGNORECASE).strip()
             
-            # Alerte envoyée sur le numéro du chef (22897633742)
             threading.Thread(
                 target=notifier_chef, 
                 args=(nom_c, heure_c, couverts_c, plats_c, from_phone)
             ).start()
+        elif "officiellement réservée" in reponse_brute.lower() or "table est réservée" in reponse_brute.lower():
+            threading.Thread(
+                target=notifier_chef, 
+                args=("Client", "Confirmé", "Réservé", "Voir échange", from_phone)
+            ).start()
 
-        # Envoi de la réponse texte au client
+        # Envoi texte au client
         memoires_clients[from_phone].append(f"Koffi: {reponse_client}")
         sauvegarder_memoires()
 
         print(f"[>] Koffi répond : {reponse_client}")
         envoyer_message_texte(from_phone, reponse_client)
 
-        # C. Envoi automatique de la photo officielle du menu
+        # C. Envoi de la photo de la carte si demandée
         mots_menu = ["carte", "menu", "photo", "visuel", "flyer"]
         if any(mot in text_client.lower() for mot in mots_menu):
             print(f"[>] Envoi de la carte officielle au {from_phone}")
