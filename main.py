@@ -6,16 +6,16 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 
-# 1. CONFIGURATION META & GOOGLE GEMINI
+# 1. CONFIGURATION META & GEMINI
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "EAAWhxl1ur38BSzCOugMGBybAW0rA7JarcTONY6kPB1GqOu3fnSsfoyqparDXutHbgBfZCoWqSKxZCYp7rI0OdUV7T6ldFrdif69rb2ptJzZCZAbBibzafJ8s0zLBpBM0peRWtmZBa1ruJpR7X1b8Qeke0TF2mkmrnp2XO0WiHVbHO1Vs917WyKLNn7dAELVaUNgZDZD")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1244852872055806")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "mon_token_secret_koffi")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA")
 
-# Numéro du Chef / Gérant qui reçoit les réservations (ton numéro)
-NUMERO_CHEF = os.environ.get("NUMERO_CHEF", "22893092692")
+# NUMÉRO DU CHEF / GÉRANT QUI REÇOIT LES ALERTES PAR WHATSAPP
+NUMERO_CHEF = os.environ.get("NUMERO_CHEF", "22897633742")
 
-# URL OFFICIELLE DE TON AFFICHE MENU HÉBERGÉE SUR GITHUB
+# URL OFFICIELLE DE TON AFFICHE MENU SUR TON GITHUB PUBLIC
 MENU_IMAGE_URL = os.environ.get(
     "MENU_IMAGE_URL", 
     "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/Code_Generated_Image.png"
@@ -26,7 +26,7 @@ messages_traites = set()
 FICHIER_MEMOIRE = "memoires_clients.json"
 FICHIER_RESERVATIONS = "reservations.json"
 
-# 2. PERSISTANCE DE LA MÉMOIRE (ZÉRO PERTE AU REDÉMARRAGE)
+# 2. PERSISTANCE DE LA MÉMOIRE (ZÉRO PERTE SUR DISQUE)
 def charger_memoires():
     if os.path.exists(FICHIER_MEMOIRE):
         try:
@@ -53,7 +53,7 @@ def enregistrer_reservation_fichier(details):
         with open(FICHIER_RESERVATIONS, "w", encoding="utf-8") as f:
             json.dump(historique, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[!] Erreur sauvegarde réservation : {e}")
+        print(f"[!] Erreur log réservation : {e}")
 
 memoires_clients = charger_memoires()
 
@@ -69,7 +69,7 @@ def envoyer_message_texte(to_phone, texte):
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=10)
-        print(f"[✓] Texte envoyé vers {to_phone} : {r.status_code}")
+        print(f"[✓] Message envoyé vers {to_phone} : {r.status_code}")
     except Exception as e:
         print(f"[!] Erreur texte : {e}")
 
@@ -116,7 +116,7 @@ def notifier_chef(nom, heure, couverts, plats, tel_client):
         "date": datetime.now().isoformat()
     })
 
-# 4. CERVEAU DE KOFFI (PROMPT PERFECTIONNÉ SANS PARENTHÈSES)
+# 4. CERVEAU DE KOFFI
 def generer_reponse_koffi(from_phone, text_client):
     texte_lower = text_client.lower()
     if "bonsoir" in texte_lower:
@@ -143,9 +143,9 @@ INFORMATIONS DU RESTAURANT :
   * Accompagnements : Alloco (1.000 F), Frites, Attiéké
 
 RÈGLES D'OR DE CONVERSATION :
-1. MÉMOIRE DU CLIENT : Retiens toujours son nom (ex: "chef Lefa") et utilise-le avec respect tout au long de la discussion.
+1. MÉMOIRE DU CLIENT : Retiens toujours son nom (ex: "chef Lefa") et utilise-le avec respect.
 2. ENVOI DE CARTE / PHOTO : Si le client demande la carte ou le menu en photo, confirme-lui avec enthousiasme que tu lui envoies la carte tout de suite.
-   ⚠️ INTERDICTION STRICTE : N'écris JAMAIS dans ton texte de parenthèses ou de descriptions d'actions comme "(Photo de la carte...)" ou "[Photo envoyée]". Contente-toi d'écrire un message chaleureux.
+   ⚠️ INTERDICTION STRICTE : N'écris JAMAIS dans ton texte de descriptions d'actions comme "(Photo de la carte...)" ou "[Photo envoyée]".
 3. PRÉSENTATION DES PLATS : Quand le client demande ce qu'il y a à manger, cite toujours les plats accompagnés de leurs prix en F CFA avec gourmandise.
 4. VALIDATION STRICTE DE LA RÉSERVATION :
    Dès que tu as le Nom, l'Heure et le Nombre de personnes :
@@ -233,7 +233,7 @@ def traiter_webhook_async(body_str):
             
             reponse_client = re.sub(r'\[RESERVATION_CONFIRMEE:.*?\]', '', reponse_brute).strip()
             
-            # Déclenchement de l'alerte au Chef
+            # Alerte envoyée sur le numéro du chef (22897633742)
             threading.Thread(
                 target=notifier_chef, 
                 args=(nom_c, heure_c, couverts_c, plats_c, from_phone)
@@ -246,10 +246,10 @@ def traiter_webhook_async(body_str):
         print(f"[>] Koffi répond : {reponse_client}")
         envoyer_message_texte(from_phone, reponse_client)
 
-        # C. Envoi automatique de la photo de la carte si demandée
+        # C. Envoi automatique de la photo officielle du menu
         mots_menu = ["carte", "menu", "photo", "visuel", "flyer"]
         if any(mot in text_client.lower() for mot in mots_menu):
-            print(f"[>] Envoi de la vraie carte au {from_phone}")
+            print(f"[>] Envoi de la carte officielle au {from_phone}")
             envoyer_photo_menu(from_phone)
 
     except Exception as e:
