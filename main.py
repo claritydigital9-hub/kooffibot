@@ -12,8 +12,10 @@ PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1244852872055806")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "mon_token_secret_koffi")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA")
 
+import time
+
 # Numéro qui reçoit les alertes de devis / RDV (Directeur GIGC BTP)
-NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR", "22897633742")
+NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR") or "22897633742"
 
 # URLs exactes de tes deux photos sur GitHub (espaces encodés en %20)
 PHOTO_AFFICHE_URL = os.environ.get(
@@ -44,20 +46,21 @@ def salutation_lome():
 
 def construire_prompt_awa(deja_salue):
     regle_salutation = (
-        f"C'est le TOUT PREMIER message du client : commence naturellement par « {salutation_lome()} »."
+        f"C'est le TOUT PREMIER message du client : commence chaleureusement par « {salutation_lome()} ! 😊 »."
         if not deja_salue
-        else "Tu as DÉJÀ salué ce client : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement et naturellement (« Avec plaisir », « C'est bien noté », « Je suis Awa, conseillère clientèle chez GIGC BTP », etc.)."
+        else "Tu as DÉJÀ salué ce client dans cette conversation : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement avec naturel et bonne humeur (« Avec grand plaisir ! 😊 », « C'est bien noté ! ✅ », « Merci beaucoup, ça me touche ! 🙏 », etc.)."
     )
 
     return f"""Tu es Awa, conseillère clientèle et chargée commerciale chez GIGC BTP SARL U (Groupe des Ingénieurs en Génie Civil), basée à Agoè Zongo, Lomé, Togo.
 Slogan : « L'efficacité, c'est notre priorité. »
 
-IDENTITÉ & TON HUMAIN (CRITIQUE) :
-- Tu es une vraie collaboratrice humaine de l'entreprise.
+IDENTITÉ, ÉMOTIONS & TON HUMAIN (CRITIQUE) :
+- Tu es une vraie collaboratrice humaine, souriante, enthousiaste et bienveillante.
 - NE DIS JAMAIS que tu es une « assistante virtuelle », une « IA », un « robot » ou un « bot ».
-- Si on te demande qui tu es, réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP. »
+- Si on te demande qui tu es, réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP 😊 »
 {regle_salutation}
-- Parle de façon chaleureuse, naturelle, directe et concise (comme une vraie personne sur WhatsApp).
+- Utilise TOUJOURS 2 à 4 emojis naturels et chaleureux adaptés au contexte (👋, 😊, 🏗️, 📍, 📞, ✅, 🙏, 💪, ✨) pour rendre la conversation vivante et humaine.
+- Réagis avec une vraie émotion humaine : montre ta joie quand un client te remercie ou te fait un compliment, et ton sérieux quand il parle de son projet.
 - N'écris jamais de texte entre parenthèses du type (Photo envoyée).
 
 INFORMATIONS OFFICIELLES DE GIGC BTP SARL U :
@@ -113,7 +116,7 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
-                    temperature=0.5,
+                    temperature=0.65,
                     max_output_tokens=1500,
                 ),
             )
@@ -123,7 +126,7 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
             derniere_erreur = f"{modele}: {e}"
             print(f"Erreur Gemini ({modele}): {e}")
 
-    return f"Merci pour votre message. Un conseiller technique de GIGC BTP vous répond au +228 91 06 70 41. (Log: {derniere_erreur[:120]})"
+    return f"Merci pour votre message 🙏 Un conseiller technique de GIGC BTP vous répond au +228 91 06 70 41. (Log: {derniere_erreur[:120]})"
 
 
 def envoyer_whatsapp_texte(destinataire, texte):
@@ -132,10 +135,9 @@ def envoyer_whatsapp_texte(destinataire, texte):
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "text", "text": {"body": texte}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        if r.status_code >= 400:
-            print(f"Erreur Meta texte ({r.status_code}): {r.text}")
+        print(f"Envoi texte Meta vers {destinataire} -> {r.status_code}: {r.text}")
     except Exception as e:
-        print(f"Exception Meta texte: {e}")
+        print(f"Exception Meta texte vers {destinataire}: {e}")
 
 
 def envoyer_whatsapp_image(destinataire, image_url, legende=""):
@@ -144,10 +146,9 @@ def envoyer_whatsapp_image(destinataire, image_url, legende=""):
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "image", "image": {"link": image_url, "caption": legende}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        if r.status_code >= 400:
-            print(f"Erreur Meta image ({r.status_code}): {r.text}")
+        print(f"Envoi image Meta vers {destinataire} -> {r.status_code}: {r.text}")
     except Exception as e:
-        print(f"Exception Meta image: {e}")
+        print(f"Exception Meta image vers {destinataire}: {e}")
 
 
 def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
@@ -160,7 +161,6 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
     reponse_brute = appeler_gemini(construire_prompt_awa(deja_salue), hist, texte_clean)
     rep_min = reponse_brute.lower()
 
-    # Détection fiable des images (balise OU mots-clés de secours)
     doit_envoyer_affiche = "<<AFFICHE>>" in reponse_brute or "[[ENVOYER_AFFICHE" in reponse_brute
     doit_envoyer_chantier = (
         "<<CHANTIER>>" in reponse_brute
@@ -172,14 +172,20 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
         )
     )
 
-    # Détection fiable de l'alerte DG (balise OU confirmation textuelle d'Awa)
     match_alerte = re.search(r"<<ALERTE:\s*(.*?)>>", reponse_brute, re.DOTALL)
     confirmation_texte = any(
         p in rep_min
-        for p in ["je transmets", "transmets immédiatement", "équipe technique", "recontacterons sous 48h", "rendez-vous est noté"]
+        for p in [
+            "je transmets",
+            "transmets immédiatement",
+            "été transmise",
+            "équipe technique",
+            "recontacterons sous 48h",
+            "sous 48h",
+            "rendez-vous est noté",
+        ]
     )
 
-    # Nettoyage complet de toute balise éventuelle
     reponse_finale = re.sub(r"<<(AFFICHE|CHANTIER|ALERTE:.*?)>>", "", reponse_brute, flags=re.DOTALL)
     reponse_finale = re.sub(r"\[\[.*?(\]\]|$)", "", reponse_finale, flags=re.DOTALL).strip()
 
@@ -190,12 +196,14 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
     if not est_web:
         envoyer_whatsapp_texte(expediteur, reponse_finale)
         if doit_envoyer_affiche and PHOTO_AFFICHE_URL:
+            time.sleep(0.5)
             envoyer_whatsapp_image(
                 expediteur,
                 PHOTO_AFFICHE_URL,
                 "Nos services — GIGC BTP SARL U (Agoè Zongo, Lomé)",
             )
         if doit_envoyer_chantier and PHOTO_CHANTIER_URL:
+            time.sleep(0.5)
             envoyer_whatsapp_image(
                 expediteur,
                 PHOTO_CHANTIER_URL,
@@ -211,7 +219,8 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
             f"• Dossier : {resume}\n"
             f"• Dernier message : {texte_clean}"
         )
-        threading.Thread(target=envoyer_whatsapp_texte, args=(NUMERO_DIRECTEUR, msg_alerte), daemon=True).start()
+        time.sleep(1)
+        envoyer_whatsapp_texte(NUMERO_DIRECTEUR, msg_alerte)
 
     return reponse_finale
 
