@@ -12,17 +12,15 @@ PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "1244852872055806")
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "mon_token_secret_koffi")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA")
 
-# Numéros Administrateurs Clarity Digital (Alexis)
-NUMEROS_ADMIN = ["22893092692", "22897633742"]
+# Numéro qui reçoit les alertes de devis / RDV (Directeur GIGC BTP)
 NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR", "22897633742")
 
-# Photo réelle de réalisation GIGC BTP sur GitHub (Résidence Renaissance - CNSS)
+# Photo sur GitHub
 PHOTO_REALISATION_URL = os.environ.get(
     "PHOTO_REALISATION_URL",
     "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/residence_renaissance.jpg",
 )
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 historiques = {}
@@ -72,27 +70,18 @@ L. Import-export : matériaux et équipements destinés au BTP.
 M. Fabrication de lampes PVC : lampes sur mesure en PVC.
 
 RÉALISATION RÉELLE CONNUE :
-- Résidence Renaissance – CNSS (propose d'envoyer la photo si le client veut voir une réalisation).
+- Résidence Renaissance – CNSS (propose d'envoyer l'affiche ou la photo si le client le demande).
 
 RÈGLES STRICTES :
 1. N'INVENTE JAMAIS de prix, tarifs, disponibilités d'engins, stocks, garanties ou certifications.
 2. Si le client demande un prix ou un devis, QUALIFIE son besoin avec 2 à 3 questions simples (type de projet ou produit, quartier/lieu, superficie ou quantité, et son nom).
-3. Si le client demande à voir des réalisations ou photos de chantiers, termine ta réponse par : [[ENVOYER_PHOTO_REALISATION]]
+3. Si le client demande à voir des réalisations, votre affiche ou des photos, termine ta réponse par : [[ENVOYER_PHOTO_REALISATION]]
 4. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin, sur une nouvelle ligne :
 [[ALERTE_DIRECTION: Résumé court du besoin, lieu, nom/contact si donné]]
 """
 
 
-PROMPT_CLARITY_HUNTER = """Tu es ClarityHunter, l'assistant stratégique B2B de Clarity Digital (Lomé, Togo).
-Tu réponds uniquement à Alexis sur WhatsApp avec des analyses concises, structurées et orientées closing au Togo (Chasse, Prospect, Audit, Objection, Veille)."""
-
-
 def appeler_gemini(system_prompt, hist, nouveau_message):
-    try:
-        contents = []
-        for msg in hist[-10:]:
-            contents.append(types.Content(role=msg["role"], parts=[types.Part.from_text(text=msg["text"])]))
-        def appeler_gemini(system_prompt, hist, nouveau_message):
     derniere_erreur = ""
     for modele in ["gemini-3.8-flash", "gemini-2.5-flash"]:
         try:
@@ -117,6 +106,11 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
             print(f"Erreur Gemini ({modele}): {e}")
 
     return f"Merci pour votre message. Un conseiller technique de GIGC BTP vous répond au +228 91 06 70 41. (Log: {derniere_erreur[:120]})"
+
+
+def envoyer_whatsapp_texte(destinataire, texte):
+    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "text", "text": {"body": texte}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
@@ -141,12 +135,6 @@ def envoyer_whatsapp_image(destinataire, image_url, legende=""):
 def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
     texte_clean = texte_recu.strip()
 
-    prefixes_admin = ("chasse:", "prospect:", "audit:", "objection:", "veille:")
-    if not est_web and expediteur in NUMEROS_ADMIN and texte_clean.lower().startswith(prefixes_admin):
-        reponse_admin = appeler_gemini(PROMPT_CLARITY_HUNTER, [], texte_clean)
-        envoyer_whatsapp_texte(expediteur, reponse_admin)
-        return reponse_admin
-
     hist = historiques.get(expediteur, [])
     deja_salue = len(hist) > 0
 
@@ -168,7 +156,7 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
             envoyer_whatsapp_image(
                 expediteur,
                 PHOTO_REALISATION_URL,
-                "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U (Lomé)",
+                "Nos services et réalisations — GIGC BTP SARL U (Agoè Zongo, Lomé)",
             )
 
     if match_alerte:
