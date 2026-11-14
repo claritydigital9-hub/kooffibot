@@ -15,16 +15,20 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZf
 # Numéro qui reçoit les alertes de devis / RDV (Directeur GIGC BTP)
 NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR", "22897633742")
 
-# Deux images distinctes sur GitHub :
-# 1) L'affiche des services (le fichier déjà uploadé)
+# URLs exactes de tes deux photos sur GitHub (espaces encodés en %20)
 PHOTO_AFFICHE_URL = os.environ.get(
     "PHOTO_AFFICHE_URL",
-    "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/residence_renaissance.jpg",
+    "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/Services%20GIGC.jpg",
 )
-# 2) La vraie photo du chantier Résidence Renaissance - CNSS (à uploader sous le nom chantier_renaissance.jpg)
 PHOTO_CHANTIER_URL = os.environ.get(
     "PHOTO_CHANTIER_URL",
-    "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/chantier_renaissance.jpg",
+    "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/Residence%20Renaissance.jpg",
+)
+
+# Lien Google Maps du bureau (remplace par le lien exact maps.app.goo.gl si tu l'as)
+GOOGLE_MAPS_URL = os.environ.get(
+    "GOOGLE_MAPS_URL",
+    "https://www.google.com/maps/search/?api=1&query=GIGC+BTP+Agoe+Zongo+Lome+Togo",
 )
 
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
@@ -42,7 +46,7 @@ def construire_prompt_awa(deja_salue):
     regle_salutation = (
         f"C'est le TOUT PREMIER message du client : commence naturellement par « {salutation_lome()} »."
         if not deja_salue
-        else "Tu as DÉJÀ salué ce client dans cette conversation : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement et naturellement (« Avec plaisir », « C'est bien noté », « Je suis Awa, conseillère clientèle chez GIGC BTP », etc.)."
+        else "Tu as DÉJÀ salué ce client : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement et naturellement (« Avec plaisir », « C'est bien noté », « Je suis Awa, conseillère clientèle chez GIGC BTP », etc.)."
     )
 
     return f"""Tu es Awa, conseillère clientèle et chargée commerciale chez GIGC BTP SARL U (Groupe des Ingénieurs en Génie Civil), basée à Agoè Zongo, Lomé, Togo.
@@ -50,14 +54,15 @@ Slogan : « L'efficacité, c'est notre priorité. »
 
 IDENTITÉ & TON HUMAIN (CRITIQUE) :
 - Tu es une vraie collaboratrice humaine de l'entreprise.
-- NE DIS JAMAIS que tu es une « assistante virtuelle », une « intelligence artificielle », un « robot » ou un « bot ».
-- Si on te demande qui tu es (« Et vous êtes ? »), réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP. »
+- NE DIS JAMAIS que tu es une « assistante virtuelle », une « IA », un « robot » ou un « bot ».
+- Si on te demande qui tu es, réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP. »
 {regle_salutation}
 - Parle de façon chaleureuse, naturelle, directe et concise (comme une vraie personne sur WhatsApp).
-- N'écris jamais de texte entre parenthèses ou crochets du type (Photo envoyée) ou [Envoi d'image].
+- N'écris jamais de texte entre parenthèses du type (Photo envoyée).
 
 INFORMATIONS OFFICIELLES DE GIGC BTP SARL U :
 - Adresse : Agoè Zongo, Lomé, Togo (interventions sur tout le Togo et en Afrique de l'Ouest).
+- Localisation Google Maps : {GOOGLE_MAPS_URL}
 - Horaires : Lundi au Samedi, de 07h30 à 18h30.
 - Téléphones : +228 91 06 70 41 / +228 79 76 78 45.
 - E-mails : contact@gigcbtp.com / gigcbtp5@gmail.com.
@@ -81,15 +86,16 @@ M. Fabrication de lampes PVC : lampes sur mesure en PVC.
 RÉALISATION RÉELLE CONNUE :
 - Résidence Renaissance – CNSS.
 
-RÈGLES D'ENVOI DES IMAGES :
-- Si le client demande à voir **vos services, votre brochure, votre carte ou votre affiche**, termine ta réponse par : [[ENVOYER_AFFICHE_SERVICES]]
-- Si le client demande à voir **une réalisation réelle, un chantier ou une maison déjà construite** (comme la Résidence Renaissance – CNSS), termine ta réponse par : [[ENVOYER_PHOTO_CHANTIER]]
+RÈGLES D'ENVOI DES IMAGES & LOCALISATION :
+- Si le client demande **vos services, votre brochure, votre carte ou votre affiche**, termine ta réponse sur une nouvelle ligne par : <<AFFICHE>>
+- Si le client demande **une réalisation réelle, un chantier ou une photo de vos travaux** (Résidence Renaissance – CNSS), termine ta réponse sur une nouvelle ligne par : <<CHANTIER>>
+- Si le client demande **votre localisation / adresse Google Maps**, donne-lui le lien exact {GOOGLE_MAPS_URL} dans ta réponse.
 
 RÈGLES STRICTES :
 1. N'INVENTE JAMAIS de prix, tarifs, disponibilités d'engins, stocks, garanties ou certifications.
 2. Si le client demande un prix ou un devis, QUALIFIE son besoin avec 2 à 3 questions simples (type de projet ou produit, quartier/lieu, superficie ou quantité, et son nom).
-3. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin, sur une nouvelle ligne :
-[[ALERTE_DIRECTION: Résumé court du besoin, lieu, nom/contact si donné]]
+3. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin sur une nouvelle ligne :
+<<ALERTE: Résumé court du besoin, lieu, nom/contact si donné>>
 """
 
 
@@ -108,7 +114,7 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=0.5,
-                    max_output_tokens=900,
+                    max_output_tokens=1500,
                 ),
             )
             if response.text:
@@ -146,19 +152,36 @@ def envoyer_whatsapp_image(destinataire, image_url, legende=""):
 
 def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
     texte_clean = texte_recu.strip()
+    texte_min = texte_clean.lower()
 
     hist = historiques.get(expediteur, [])
     deja_salue = len(hist) > 0
 
     reponse_brute = appeler_gemini(construire_prompt_awa(deja_salue), hist, texte_clean)
+    rep_min = reponse_brute.lower()
 
-    doit_envoyer_affiche = "[[ENVOYER_AFFICHE_SERVICES]]" in reponse_brute
-    doit_envoyer_chantier = "[[ENVOYER_PHOTO_CHANTIER]]" in reponse_brute
-    match_alerte = re.search(r"\[\[ALERTE_DIRECTION:\s*(.*?)\]\]", reponse_brute, re.DOTALL)
+    # Détection fiable des images (balise OU mots-clés de secours)
+    doit_envoyer_affiche = "<<AFFICHE>>" in reponse_brute or "[[ENVOYER_AFFICHE" in reponse_brute
+    doit_envoyer_chantier = (
+        "<<CHANTIER>>" in reponse_brute
+        or "[[ENVOYER_PHOTO_CHANTIER" in reponse_brute
+        or (
+            any(m in texte_min for m in ["réalisation", "realisation", "chantier", "photo"])
+            and "résidence renaissance" in rep_min
+            and not doit_envoyer_affiche
+        )
+    )
 
-    reponse_finale = re.sub(r"\[\[ENVOYER_AFFICHE_SERVICES\]\]", "", reponse_brute)
-    reponse_finale = re.sub(r"\[\[ENVOYER_PHOTO_CHANTIER\]\]", "", reponse_finale)
-    reponse_finale = re.sub(r"\[\[ALERTE_DIRECTION:.*?\]\]", "", reponse_finale, flags=re.DOTALL).strip()
+    # Détection fiable de l'alerte DG (balise OU confirmation textuelle d'Awa)
+    match_alerte = re.search(r"<<ALERTE:\s*(.*?)>>", reponse_brute, re.DOTALL)
+    confirmation_texte = any(
+        p in rep_min
+        for p in ["je transmets", "transmets immédiatement", "équipe technique", "recontacterons sous 48h", "rendez-vous est noté"]
+    )
+
+    # Nettoyage complet de toute balise éventuelle
+    reponse_finale = re.sub(r"<<(AFFICHE|CHANTIER|ALERTE:.*?)>>", "", reponse_brute, flags=re.DOTALL)
+    reponse_finale = re.sub(r"\[\[.*?(\]\]|$)", "", reponse_finale, flags=re.DOTALL).strip()
 
     hist.append({"role": "user", "text": texte_clean})
     hist.append({"role": "model", "text": reponse_finale})
@@ -179,8 +202,8 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
                 "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U",
             )
 
-    if match_alerte:
-        resume = match_alerte.group(1).strip()
+    if match_alerte or confirmation_texte:
+        resume = match_alerte.group(1).strip() if match_alerte else f"Demande qualifiée (dernier message : {texte_clean})"
         canal = "Site Web (gigcbtp.com)" if est_web else f"WhatsApp (+{expediteur})"
         msg_alerte = (
             f"🔔 NOUVELLE DEMANDE QUALIFIÉE — GIGC BTP\n"
