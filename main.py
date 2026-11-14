@@ -13,6 +13,7 @@ VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "mon_token_secret_koffi")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZfcw6H3n1rOcq1IUOYBsQGAKnA")
 
 import time
+import traceback
 
 # Numéro qui reçoit les alertes de devis / RDV (Directeur GIGC BTP)
 NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR") or "22897633742"
@@ -27,7 +28,7 @@ PHOTO_CHANTIER_URL = os.environ.get(
     "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/Residence%20Renaissance.jpg",
 )
 
-# Lien Google Maps du bureau (remplace par le lien exact maps.app.goo.gl si tu l'as)
+# Lien Google Maps du bureau
 GOOGLE_MAPS_URL = os.environ.get(
     "GOOGLE_MAPS_URL",
     "https://www.google.com/maps/search/?api=1&query=GIGC+BTP+Agoe+Zongo+Lome+Togo",
@@ -40,8 +41,8 @@ messages_traites = set()
 
 
 def salutation_lome():
-    heure_utc = datetime.utcnow().hour
-    return "Bonjour" if 5 <= heure_utc < 18 else "Bonsoir"
+    heure = datetime.now().hour
+    return "Bonjour" if 5 <= heure < 18 else "Bonsoir"
 
 
 def construire_prompt_awa(deja_salue):
@@ -121,10 +122,11 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
                 ),
             )
             if response.text:
+                print(f"Gemini OK ({modele})", flush=True)
                 return response.text.strip()
         except Exception as e:
             derniere_erreur = f"{modele}: {e}"
-            print(f"Erreur Gemini ({modele}): {e}")
+            print(f"Erreur Gemini ({modele}): {e}", flush=True)
 
     return f"Merci pour votre message 🙏 Un conseiller technique de GIGC BTP vous répond au +228 91 06 70 41. (Log: {derniere_erreur[:120]})"
 
@@ -135,9 +137,9 @@ def envoyer_whatsapp_texte(destinataire, texte):
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "text", "text": {"body": texte}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"Envoi texte Meta vers {destinataire} -> {r.status_code}: {r.text}")
+        print(f"Envoi texte Meta vers {destinataire} -> {r.status_code}: {r.text}", flush=True)
     except Exception as e:
-        print(f"Exception Meta texte vers {destinataire}: {e}")
+        print(f"Exception Meta texte vers {destinataire}: {e}", flush=True)
 
 
 def envoyer_whatsapp_image(destinataire, image_url, legende=""):
@@ -146,83 +148,89 @@ def envoyer_whatsapp_image(destinataire, image_url, legende=""):
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "image", "image": {"link": image_url, "caption": legende}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"Envoi image Meta vers {destinataire} -> {r.status_code}: {r.text}")
+        print(f"Envoi image Meta vers {destinataire} -> {r.status_code}: {r.text}", flush=True)
     except Exception as e:
-        print(f"Exception Meta image vers {destinataire}: {e}")
+        print(f"Exception Meta image vers {destinataire}: {e}", flush=True)
 
 
 def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
-    texte_clean = texte_recu.strip()
-    texte_min = texte_clean.lower()
+    try:
+        print(f"Message recu de {expediteur}: {texte_recu}", flush=True)
+        texte_clean = texte_recu.strip()
+        texte_min = texte_clean.lower()
 
-    hist = historiques.get(expediteur, [])
-    deja_salue = len(hist) > 0
+        hist = historiques.get(expediteur, [])
+        deja_salue = len(hist) > 0
 
-    reponse_brute = appeler_gemini(construire_prompt_awa(deja_salue), hist, texte_clean)
-    rep_min = reponse_brute.lower()
+        reponse_brute = appeler_gemini(construire_prompt_awa(deja_salue), hist, texte_clean)
+        rep_min = reponse_brute.lower()
 
-    doit_envoyer_affiche = "<<AFFICHE>>" in reponse_brute or "[[ENVOYER_AFFICHE" in reponse_brute
-    doit_envoyer_chantier = (
-        "<<CHANTIER>>" in reponse_brute
-        or "[[ENVOYER_PHOTO_CHANTIER" in reponse_brute
-        or (
-            any(m in texte_min for m in ["réalisation", "realisation", "chantier", "photo"])
-            and "résidence renaissance" in rep_min
-            and not doit_envoyer_affiche
-        )
-    )
-
-    match_alerte = re.search(r"<<ALERTE:\s*(.*?)>>", reponse_brute, re.DOTALL)
-    confirmation_texte = any(
-        p in rep_min
-        for p in [
-            "je transmets",
-            "transmets immédiatement",
-            "été transmise",
-            "équipe technique",
-            "recontacterons sous 48h",
-            "sous 48h",
-            "rendez-vous est noté",
-        ]
-    )
-
-    reponse_finale = re.sub(r"<<(AFFICHE|CHANTIER|ALERTE:.*?)>>", "", reponse_brute, flags=re.DOTALL)
-    reponse_finale = re.sub(r"\[\[.*?(\]\]|$)", "", reponse_finale, flags=re.DOTALL).strip()
-
-    hist.append({"role": "user", "text": texte_clean})
-    hist.append({"role": "model", "text": reponse_finale})
-    historiques[expediteur] = hist[-12:]
-
-    if not est_web:
-        envoyer_whatsapp_texte(expediteur, reponse_finale)
-        if doit_envoyer_affiche and PHOTO_AFFICHE_URL:
-            time.sleep(0.5)
-            envoyer_whatsapp_image(
-                expediteur,
-                PHOTO_AFFICHE_URL,
-                "Nos services — GIGC BTP SARL U (Agoè Zongo, Lomé)",
+        doit_envoyer_affiche = "<<AFFICHE>>" in reponse_brute or "[[ENVOYER_AFFICHE" in reponse_brute
+        doit_envoyer_chantier = (
+            "<<CHANTIER>>" in reponse_brute
+            or "[[ENVOYER_PHOTO_CHANTIER" in reponse_brute
+            or (
+                any(m in texte_min for m in ["réalisation", "realisation", "chantier", "photo"])
+                and "résidence renaissance" in rep_min
+                and not doit_envoyer_affiche
             )
-        if doit_envoyer_chantier and PHOTO_CHANTIER_URL:
-            time.sleep(0.5)
-            envoyer_whatsapp_image(
-                expediteur,
-                PHOTO_CHANTIER_URL,
-                "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U",
-            )
-
-    if match_alerte or confirmation_texte:
-        resume = match_alerte.group(1).strip() if match_alerte else f"Demande qualifiée (dernier message : {texte_clean})"
-        canal = "Site Web (gigcbtp.com)" if est_web else f"WhatsApp (+{expediteur})"
-        msg_alerte = (
-            f"🔔 NOUVELLE DEMANDE QUALIFIÉE — GIGC BTP\n"
-            f"• Canal : {canal}\n"
-            f"• Dossier : {resume}\n"
-            f"• Dernier message : {texte_clean}"
         )
-        time.sleep(1)
-        envoyer_whatsapp_texte(NUMERO_DIRECTEUR, msg_alerte)
 
-    return reponse_finale
+        match_alerte = re.search(r"<<ALERTE:\s*(.*?)>>", reponse_brute, re.DOTALL)
+        confirmation_texte = any(
+            p in rep_min
+            for p in [
+                "je transmets",
+                "transmets immédiatement",
+                "été transmise",
+                "équipe technique",
+                "recontacterons sous 48h",
+                "sous 48h",
+                "rendez-vous est noté",
+            ]
+        )
+
+        reponse_finale = re.sub(r"<<(AFFICHE|CHANTIER|ALERTE:.*?)>>", "", reponse_brute, flags=re.DOTALL)
+        reponse_finale = re.sub(r"\[\[.*?(\]\]|$)", "", reponse_finale, flags=re.DOTALL).strip()
+
+        hist.append({"role": "user", "text": texte_clean})
+        hist.append({"role": "model", "text": reponse_finale})
+        historiques[expediteur] = hist[-12:]
+
+        if not est_web:
+            envoyer_whatsapp_texte(expediteur, reponse_finale)
+            if doit_envoyer_affiche and PHOTO_AFFICHE_URL:
+                time.sleep(0.5)
+                envoyer_whatsapp_image(
+                    expediteur,
+                    PHOTO_AFFICHE_URL,
+                    "Nos services — GIGC BTP SARL U (Agoè Zongo, Lomé)",
+                )
+            if doit_envoyer_chantier and PHOTO_CHANTIER_URL:
+                time.sleep(0.5)
+                envoyer_whatsapp_image(
+                    expediteur,
+                    PHOTO_CHANTIER_URL,
+                    "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U",
+                )
+
+        if match_alerte or confirmation_texte:
+            resume = match_alerte.group(1).strip() if match_alerte else f"Demande qualifiée (dernier message : {texte_clean})"
+            canal = "Site Web (gigcbtp.com)" if est_web else f"WhatsApp (+{expediteur})"
+            msg_alerte = (
+                f"🔔 NOUVELLE DEMANDE QUALIFIÉE — GIGC BTP\n"
+                f"• Canal : {canal}\n"
+                f"• Dossier : {resume}\n"
+                f"• Dernier message : {texte_clean}"
+            )
+            time.sleep(1)
+            envoyer_whatsapp_texte(NUMERO_DIRECTEUR, msg_alerte)
+
+        return reponse_finale
+    except Exception as e:
+        print(f"CRASH traiter_message_utilisateur: {e}", flush=True)
+        traceback.print_exc()
+        return "Merci pour votre message 🙏 Un conseiller GIGC BTP vous répond au +228 91 06 70 41."
 
 
 class WebhookHandler(BaseHTTPRequestHandler):
@@ -302,7 +310,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                                 daemon=True,
                             ).start()
         except Exception as e:
-            print(f"Erreur webhook: {e}")
+            print(f"Erreur webhook: {e}", flush=True)
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -312,5 +320,5 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print(f"Demarrage serveur Awa GIGC BTP sur le port {port}")
+    print(f"Demarrage serveur Awa GIGC BTP sur le port {port}", flush=True)
     HTTPServer(("0.0.0.0", port), WebhookHandler).serve_forever()
