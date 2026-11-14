@@ -83,7 +83,7 @@ RÈGLES STRICTES :
 
 def appeler_gemini(system_prompt, hist, nouveau_message):
     derniere_erreur = ""
-    for modele in ["gemini-3.8-flash", "gemini-2.5-flash"]:
+    for modele in ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash"]:
         try:
             contents = []
             for msg in hist[-10:]:
@@ -262,3 +262,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"Demarrage serveur Awa GIGC BTP sur le port {port}")
     HTTPServer(("0.0.0.0", port), WebhookHandler).serve_forever()
+  
