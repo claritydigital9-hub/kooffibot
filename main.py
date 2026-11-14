@@ -92,26 +92,31 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
         contents = []
         for msg in hist[-10:]:
             contents.append(types.Content(role=msg["role"], parts=[types.Part.from_text(text=msg["text"])]))
-        contents.append(types.Content(role="user", parts=[types.Part.from_text(text=nouveau_message)]))
+        def appeler_gemini(system_prompt, hist, nouveau_message):
+    derniere_erreur = ""
+    for modele in ["gemini-3.8-flash", "gemini-2.5-flash"]:
+        try:
+            contents = []
+            for msg in hist[-10:]:
+                contents.append(types.Content(role=msg["role"], parts=[types.Part(text=msg["text"])]))
+            contents.append(types.Content(role="user", parts=[types.Part(text=nouveau_message)]))
 
-        response = client_gemini.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.5,
-                max_output_tokens=900,
-            ),
-        )
-        return (response.text or "").strip()
-    except Exception as e:
-        print(f"Erreur Gemini: {e}")
-        return "Merci pour votre message. Un conseiller technique de GIGC BTP vous répond très rapidement au +228 91 06 70 41."
+            response = client_gemini.models.generate_content(
+                model=modele,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.5,
+                    max_output_tokens=900,
+                ),
+            )
+            if response.text:
+                return response.text.strip()
+        except Exception as e:
+            derniere_erreur = f"{modele}: {e}"
+            print(f"Erreur Gemini ({modele}): {e}")
 
-
-def envoyer_whatsapp_texte(destinataire, texte):
-    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-    headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
+    return f"Merci pour votre message. Un conseiller technique de GIGC BTP vous répond au +228 91 06 70 41. (Log: {derniere_erreur[:120]})"
     payload = {"messaging_product": "whatsapp", "to": destinataire, "type": "text", "text": {"body": texte}}
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=15)
