@@ -38,6 +38,7 @@ client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 historiques = {}
 messages_traites = set()
+alertes_envoyees = set()
 
 
 def salutation_lome():
@@ -49,7 +50,7 @@ def construire_prompt_awa(deja_salue):
     regle_salutation = (
         f"C'est le TOUT PREMIER message du client : commence chaleureusement par « {salutation_lome()} ! 😊 »."
         if not deja_salue
-        else "Tu as DÉJÀ salué ce client dans cette conversation : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement avec naturel et bonne humeur (« Avec grand plaisir ! 😊 », « C'est bien noté ! ✅ », « Merci beaucoup, ça me touche ! 🙏 », etc.)."
+        else "Tu as DÉJÀ salué ce client dans cette conversation : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement avec naturel et bonne humeur (« Avec grand plaisir ! 😊 », « C'est bien noté ! ✅ », « Merci beaucoup ! 🙏 », etc.)."
     )
 
     return f"""Tu es Awa, conseillère clientèle et chargée commerciale chez GIGC BTP SARL U (Groupe des Ingénieurs en Génie Civil), basée à Agoè Zongo, Lomé, Togo.
@@ -60,8 +61,7 @@ IDENTITÉ, ÉMOTIONS & TON HUMAIN (CRITIQUE) :
 - NE DIS JAMAIS que tu es une « assistante virtuelle », une « IA », un « robot » ou un « bot ».
 - Si on te demande qui tu es, réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP 😊 »
 {regle_salutation}
-- Utilise TOUJOURS 2 à 4 emojis naturels et chaleureux adaptés au contexte (👋, 😊, 🏗️, 📍, 📞, ✅, 🙏, 💪, ✨) pour rendre la conversation vivante et humaine.
-- Réagis avec une vraie émotion humaine : montre ta joie quand un client te remercie ou te fait un compliment, et ton sérieux quand il parle de son projet.
+- Utilise TOUJOURS 2 à 4 emojis naturels et chaleureux adaptés au contexte (👋, 😊, 🏗️, 📍, 📞, ✅, 🙏, 💪, ✨) pour rendre la conversation vivante.
 - N'écris jamais de texte entre parenthèses du type (Photo envoyée).
 
 INFORMATIONS OFFICIELLES DE GIGC BTP SARL U :
@@ -95,17 +95,20 @@ RÈGLES D'ENVOI DES IMAGES & LOCALISATION :
 - Si le client demande **une réalisation réelle, un chantier ou une photo de vos travaux** (Résidence Renaissance – CNSS), termine ta réponse sur une nouvelle ligne par : <<CHANTIER>>
 - Si le client demande **votre localisation / adresse Google Maps**, donne-lui le lien exact {GOOGLE_MAPS_URL} dans ta réponse.
 
-RÈGLES STRICTES :
+RÈGLES STRICTES DE QUALIFICATION (TRÈS IMPORTANT) :
 1. N'INVENTE JAMAIS de prix, tarifs, disponibilités d'engins, stocks, garanties ou certifications.
-2. Si le client demande un prix ou un devis, QUALIFIE son besoin avec 2 à 3 questions simples (type de projet ou produit, quartier/lieu, superficie ou quantité, et son nom).
-3. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin sur une nouvelle ligne :
-<<ALERTE: Résumé court du besoin, lieu, nom/contact si donné>>
+2. Si un client veut commander des matériaux, louer un engin, demander un devis ou un forage, vérifie TOUJOURS qu'il ne manque aucune précision importante :
+   - Matériaux : type exact (ex: sable fin ou gros grain, ciment CIMCO ou CIMTOGO), quantité, quartier de livraison, nom du client.
+   - Construction / Forage : type de projet, quartier/lieu, superficie ou accessibilité, nom du client.
+   S'il manque une précision, pose la question poliment et NE CLÔTURE PAS encore le dossier.
+3. UNIQUEMENT lorsque TOUTES les informations sont complètes (ou quand le client confirme un rendez-vous précis), confirme que le dossier complet est transmis à la direction/équipe technique pour un retour sous 48h, et ajoute à la toute fin sur une nouvelle ligne (en reformulant proprement, sans mots familiers) :
+<<ALERTE: Client: [Nom] | Demande: [Résumé professionnel complet avec type exact, quantité et lieu]>>
 """
 
 
 def appeler_gemini(system_prompt, hist, nouveau_message):
     derniere_erreur = ""
-    for modele in ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-2.0-flash"]:
+    for modele in ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]:
         try:
             contents = []
             for msg in hist[-10:]:
@@ -117,7 +120,7 @@ def appeler_gemini(system_prompt, hist, nouveau_message):
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
-                    temperature=0.65,
+                    temperature=0.6,
                     max_output_tokens=1500,
                 ),
             )
@@ -177,21 +180,18 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
         )
 
         match_alerte = re.search(r"<<ALERTE:\s*(.*?)>>", reponse_brute, re.DOTALL)
-        confirmation_texte = any(
-            p in rep_min
-            for p in [
-                "je transmets",
-                "transmets immédiatement",
-                "été transmise",
-                "équipe technique",
-                "recontacterons sous 48h",
-                "sous 48h",
-                "rendez-vous est noté",
-            ]
-        )
 
         reponse_finale = re.sub(r"<<(AFFICHE|CHANTIER|ALERTE:.*?)>>", "", reponse_brute, flags=re.DOTALL)
         reponse_finale = re.sub(r"\[\[.*?(\]\]|$)", "", reponse_finale, flags=re.DOTALL).strip()
+
+        # On ne déclenche JAMAIS l'alerte si Awa pose encore une question ("?") au client
+        dossier_cloture = (
+            match_alerte is not None
+            and "?" not in reponse_finale
+        ) or (
+            "?" not in reponse_finale
+            and any(p in rep_min for p in ["dossier complet est transmis", "transmets immédiatement votre demande", "rendez-vous est noté", "bien transmise à notre équipe"])
+        )
 
         hist.append({"role": "user", "text": texte_clean})
         hist.append({"role": "model", "text": reponse_finale})
@@ -214,17 +214,24 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
                     "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U",
                 )
 
-        if match_alerte or confirmation_texte:
-            resume = match_alerte.group(1).strip() if match_alerte else f"Demande qualifiée (dernier message : {texte_clean})"
-            canal = "Site Web (gigcbtp.com)" if est_web else f"WhatsApp (+{expediteur})"
-            msg_alerte = (
-                f"🔔 NOUVELLE DEMANDE QUALIFIÉE — GIGC BTP\n"
-                f"• Canal : {canal}\n"
-                f"• Dossier : {resume}\n"
-                f"• Dernier message : {texte_clean}"
-            )
-            time.sleep(1)
-            envoyer_whatsapp_texte(NUMERO_DIRECTEUR, msg_alerte)
+        if dossier_cloture:
+            resume = match_alerte.group(1).strip() if match_alerte else "Demande qualifiée — voir détails échangés avec le client"
+            cle_alerte = f"{expediteur}:{resume[:40]}"
+            if cle_alerte not in alertes_envoyees:
+                alertes_envoyees.add(cle_alerte)
+                if len(alertes_envoyees) > 500:
+                    alertes_envoyees.clear()
+
+                canal = "Site Web (gigcbtp.com)" if est_web else f"WhatsApp (+{expediteur})"
+                msg_alerte = (
+                    f"🏗️ NOUVEAU DOSSIER CLIENT — GIGC BTP\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"• Canal : {canal}\n"
+                    f"• Récapitulatif : {resume}\n"
+                    f"• Statut : En attente de traitement (délai annoncé : 48h)"
+                )
+                time.sleep(1)
+                envoyer_whatsapp_texte(NUMERO_DIRECTEUR, msg_alerte)
 
         return reponse_finale
     except Exception as e:
