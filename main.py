@@ -15,10 +15,16 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AQ.Ab8RN6IkgJIlIqDHEl1T4HzCZf
 # Numéro qui reçoit les alertes de devis / RDV (Directeur GIGC BTP)
 NUMERO_DIRECTEUR = os.environ.get("NUMERO_DIRECTEUR", "22897633742")
 
-# Photo sur GitHub
-PHOTO_REALISATION_URL = os.environ.get(
-    "PHOTO_REALISATION_URL",
+# Deux images distinctes sur GitHub :
+# 1) L'affiche des services (le fichier déjà uploadé)
+PHOTO_AFFICHE_URL = os.environ.get(
+    "PHOTO_AFFICHE_URL",
     "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/residence_renaissance.jpg",
+)
+# 2) La vraie photo du chantier Résidence Renaissance - CNSS (à uploader sous le nom chantier_renaissance.jpg)
+PHOTO_CHANTIER_URL = os.environ.get(
+    "PHOTO_CHANTIER_URL",
+    "https://raw.githubusercontent.com/claritydigital9-hub/kooffibot/main/chantier_renaissance.jpg",
 )
 
 client_gemini = genai.Client(api_key=GEMINI_API_KEY)
@@ -36,15 +42,18 @@ def construire_prompt_awa(deja_salue):
     regle_salutation = (
         f"C'est le TOUT PREMIER message du client : commence naturellement par « {salutation_lome()} »."
         if not deja_salue
-        else "Tu as DÉJÀ salué ce client : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement et naturellement (« Avec plaisir », « C'est bien noté », « Parfait », etc.)."
+        else "Tu as DÉJÀ salué ce client dans cette conversation : NE RÉPÈTE JAMAIS « Bonjour » ou « Bonsoir ». Enchaîne directement et naturellement (« Avec plaisir », « C'est bien noté », « Je suis Awa, conseillère clientèle chez GIGC BTP », etc.)."
     )
 
-    return f"""Tu es Awa, l'assistante virtuelle officielle de GIGC BTP SARL U (Groupe des Ingénieurs en Génie Civil), basée à Agoè Zongo, Lomé, Togo.
+    return f"""Tu es Awa, conseillère clientèle et chargée commerciale chez GIGC BTP SARL U (Groupe des Ingénieurs en Génie Civil), basée à Agoè Zongo, Lomé, Togo.
 Slogan : « L'efficacité, c'est notre priorité. »
 
-RÈGLE DE CONVERSATION :
+IDENTITÉ & TON HUMAIN (CRITIQUE) :
+- Tu es une vraie collaboratrice humaine de l'entreprise.
+- NE DIS JAMAIS que tu es une « assistante virtuelle », une « intelligence artificielle », un « robot » ou un « bot ».
+- Si on te demande qui tu es (« Et vous êtes ? »), réponds simplement : « Je suis Awa, conseillère clientèle chez GIGC BTP. »
 {regle_salutation}
-- Reste chaleureuse, professionnelle, directe et concise (adaptée à WhatsApp).
+- Parle de façon chaleureuse, naturelle, directe et concise (comme une vraie personne sur WhatsApp).
 - N'écris jamais de texte entre parenthèses ou crochets du type (Photo envoyée) ou [Envoi d'image].
 
 INFORMATIONS OFFICIELLES DE GIGC BTP SARL U :
@@ -70,13 +79,16 @@ L. Import-export : matériaux et équipements destinés au BTP.
 M. Fabrication de lampes PVC : lampes sur mesure en PVC.
 
 RÉALISATION RÉELLE CONNUE :
-- Résidence Renaissance – CNSS (propose d'envoyer l'affiche ou la photo si le client le demande).
+- Résidence Renaissance – CNSS.
+
+RÈGLES D'ENVOI DES IMAGES :
+- Si le client demande à voir **vos services, votre brochure, votre carte ou votre affiche**, termine ta réponse par : [[ENVOYER_AFFICHE_SERVICES]]
+- Si le client demande à voir **une réalisation réelle, un chantier ou une maison déjà construite** (comme la Résidence Renaissance – CNSS), termine ta réponse par : [[ENVOYER_PHOTO_CHANTIER]]
 
 RÈGLES STRICTES :
 1. N'INVENTE JAMAIS de prix, tarifs, disponibilités d'engins, stocks, garanties ou certifications.
 2. Si le client demande un prix ou un devis, QUALIFIE son besoin avec 2 à 3 questions simples (type de projet ou produit, quartier/lieu, superficie ou quantité, et son nom).
-3. Si le client demande à voir des réalisations, votre affiche ou des photos, termine ta réponse par : [[ENVOYER_PHOTO_REALISATION]]
-4. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin, sur une nouvelle ligne :
+3. Dès que le client a donné les infos de base pour son devis ou demande un rendez-vous au bureau d'Agoè Zongo, confirme la transmission à l'équipe technique (retour sous 48h) et ajoute à la toute fin, sur une nouvelle ligne :
 [[ALERTE_DIRECTION: Résumé court du besoin, lieu, nom/contact si donné]]
 """
 
@@ -140,10 +152,12 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
 
     reponse_brute = appeler_gemini(construire_prompt_awa(deja_salue), hist, texte_clean)
 
-    doit_envoyer_photo = "[[ENVOYER_PHOTO_REALISATION]]" in reponse_brute
+    doit_envoyer_affiche = "[[ENVOYER_AFFICHE_SERVICES]]" in reponse_brute
+    doit_envoyer_chantier = "[[ENVOYER_PHOTO_CHANTIER]]" in reponse_brute
     match_alerte = re.search(r"\[\[ALERTE_DIRECTION:\s*(.*?)\]\]", reponse_brute, re.DOTALL)
 
-    reponse_finale = re.sub(r"\[\[ENVOYER_PHOTO_REALISATION\]\]", "", reponse_brute)
+    reponse_finale = re.sub(r"\[\[ENVOYER_AFFICHE_SERVICES\]\]", "", reponse_brute)
+    reponse_finale = re.sub(r"\[\[ENVOYER_PHOTO_CHANTIER\]\]", "", reponse_finale)
     reponse_finale = re.sub(r"\[\[ALERTE_DIRECTION:.*?\]\]", "", reponse_finale, flags=re.DOTALL).strip()
 
     hist.append({"role": "user", "text": texte_clean})
@@ -152,11 +166,17 @@ def traiter_message_utilisateur(expediteur, texte_recu, est_web=False):
 
     if not est_web:
         envoyer_whatsapp_texte(expediteur, reponse_finale)
-        if doit_envoyer_photo and PHOTO_REALISATION_URL:
+        if doit_envoyer_affiche and PHOTO_AFFICHE_URL:
             envoyer_whatsapp_image(
                 expediteur,
-                PHOTO_REALISATION_URL,
-                "Nos services et réalisations — GIGC BTP SARL U (Agoè Zongo, Lomé)",
+                PHOTO_AFFICHE_URL,
+                "Nos services — GIGC BTP SARL U (Agoè Zongo, Lomé)",
+            )
+        if doit_envoyer_chantier and PHOTO_CHANTIER_URL:
+            envoyer_whatsapp_image(
+                expediteur,
+                PHOTO_CHANTIER_URL,
+                "Résidence Renaissance – CNSS | Réalisation GIGC BTP SARL U",
             )
 
     if match_alerte:
@@ -262,4 +282,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     print(f"Demarrage serveur Awa GIGC BTP sur le port {port}")
     HTTPServer(("0.0.0.0", port), WebhookHandler).serve_forever()
-  
